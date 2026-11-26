@@ -27,6 +27,19 @@ Before using the page:
 
 The root `firebase.json` configures Hosting to serve the `web/` directory and points Firestore at `firestore.rules`. `firebase-rules.json` is a copy of that JSON configuration for reference; Firestore security rules themselves are the plain-text `firestore.rules` file.
 
+## Local WebSocket server (macOS)
+
+From the repository root, run:
+
+```bash
+python3 -m pip install -r server/requirements.txt
+python3 server/server.py
+```
+
+The server listens only on `127.0.0.1:8765`. Open the hosted GDCapture page on the same Mac, click **Connect local server**, and look for **WebSocket round-trip successful**. Stop the server with Ctrl+C.
+
+This is a transport smoke test only: it echoes text and binary messages. It does not capture Geometry Dash frames or stream video yet.
+
 ## Current development status
 
 The first mod milestone is a loadable Geode skeleton. The web page currently supports anonymous Firebase sign-in, creating/joining a room, and testing a connection to the planned local WebSocket server at `ws://127.0.0.1:8765`.
