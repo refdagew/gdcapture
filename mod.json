@@ -1,0 +1,13 @@
+{
+  "geode": "5.11.2",
+  "gd": {
+    "win": "2.2081"
+  },
+  "id": "refdagew.gdcapture",
+  "name": "GDCapture",
+  "version": "0.1.0",
+  "developer": "refdagew",
+  "description": "A lightweight Geometry Dash capture and streaming mod.",
+  "repository": "https://github.com/refdagew/gdcapture",
+  "dependencies": {}
+}
