@@ -36,9 +36,9 @@ python3 -m pip install -r server/requirements.txt
 python3 server/server.py
 ```
 
-The server listens only on `127.0.0.1:8765`. Open the hosted GDCapture page on the same Mac, click **Connect local server**, and look for **WebSocket round-trip successful**. Stop the server with Ctrl+C.
+The server listens only on `127.0.0.1`: browser WebSocket on port `8765`, and a local HTTP handshake endpoint for the Geode mod on port `8766`. Open the hosted GDCapture page on the same Mac, click **Connect local server**, and look for **WebSocket round-trip successful**. Start Geometry Dash with the updated Geode mod installed; the server terminal should print `GEODE MOD CONNECTED`. Stop the server with Ctrl+C.
 
-This is a transport smoke test only: it echoes text and binary messages. It does not capture Geometry Dash frames or stream video yet.
+This is a connectivity test only. It does not capture Geometry Dash frames or stream video yet.
 
 ## Current development status
 
