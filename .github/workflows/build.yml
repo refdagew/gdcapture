@@ -1,0 +1,30 @@
+name: Build GDCapture
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows Geode mod
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build GDCapture (Geode SDK from mod.json)
+        id: build
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          sdk: given
+          target: Win64
+          build-config: Release
+
+      - name: Upload .geode package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GDCapture-Win64
+          path: ${{ steps.build.outputs.build-output }}/**/*.geode
+          if-no-files-found: error
