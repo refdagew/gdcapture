@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isRoomMember(roomId) {
+      let room = get(/databases/$(database)/documents/rooms/$(roomId)).data;
+      return signedIn()
+        && (room.hostUid == request.auth.uid || room.viewerUid == request.auth.uid);
+    }
+
+    match /rooms/{roomId} {
+      allow create: if signedIn()
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.viewerUid == null
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.keys().hasOnly(['hostUid', 'viewerUid', 'status', 'createdAt']);
+
+      // Waiting rooms can be discovered by an authenticated viewer who has the code.
+      allow get: if signedIn()
+        && (resource.data.status == 'waiting' || isRoomMember(roomId));
+      allow list: if false;
+
+      // Host creates/updates the offer; the first viewer claims the room and sets the answer.
+      allow update: if signedIn() && (
+        (resource.data.hostUid == request.auth.uid
+          && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.viewerUid == resource.data.viewerUid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['offer', 'status', 'updatedAt']))
+        || (resource.data.viewerUid == null
+          && request.resource.data.viewerUid == request.auth.uid
+          && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['viewerUid', 'status', 'updatedAt']))
+        || (resource.data.viewerUid == request.auth.uid
+          && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.viewerUid == resource.data.viewerUid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['answer', 'status', 'updatedAt']))
+      );
+
+      allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+
+      match /candidates/{candidateId} {
+        allow read, create, delete: if isRoomMember(roomId);
+        allow update: if false;
+      }
+    }
+  }
+}
