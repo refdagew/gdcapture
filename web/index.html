@@ -153,11 +153,27 @@
       localSocket.binaryType = "arraybuffer";
       localSocket.onopen = () => {
         $("connectLocal").textContent = "Disconnect local server";
-        status("Local server connected. Media transport is not implemented yet.");
+        status("WebSocket connected. Checking round-trip…");
+        localSocket.send(JSON.stringify({ type: "browser-test", message: "hello from the GDCapture viewer" }));
       };
       localSocket.onmessage = (event) => {
-        const bytes = event.data instanceof ArrayBuffer ? event.data.byteLength : 0;
-        status("Local server connected. Received " + bytes + " bytes; playback is not implemented yet.");
+        if (typeof event.data === "string") {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === "server-ready") {
+              status("Local server is ready. WebSocket connection works!");
+            } else if (message.type === "echo") {
+              status("WebSocket round-trip successful. Server replied: " + message.message);
+            } else {
+              status("Local server: " + event.data);
+            }
+          } catch {
+            status("Local server: " + event.data);
+          }
+        } else {
+          const bytes = event.data instanceof ArrayBuffer ? event.data.byteLength : 0;
+          status("Binary round-trip received: " + bytes + " bytes.");
+        }
       };
       localSocket.onerror = () => status("Could not connect to localhost. Start the GDCapture Mac server first.");
       localSocket.onclose = () => {
