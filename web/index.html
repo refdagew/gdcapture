@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>GDCapture</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #0b1020; color: #eef2ff; display: grid; place-items: center; padding: 24px; }
+    main { width: min(100%, 620px); background: #151d32; border: 1px solid #293653; border-radius: 18px; padding: 26px; box-shadow: 0 20px 70px #0006; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    p { color: #aab6d0; line-height: 1.5; }
+    .muted { font-size: 13px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+    button, input { font: inherit; border-radius: 10px; padding: 11px 13px; }
+    button { border: 0; color: white; background: #5865e8; cursor: pointer; font-weight: 650; }
+    button.secondary { background: #293653; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input { min-width: 0; flex: 1; color: white; background: #0d1426; border: 1px solid #344361; }
+    .status { padding: 12px 14px; border-radius: 10px; background: #0d1426; color: #cbd5e1; overflow-wrap: anywhere; }
+    .room { font: 700 20px ui-monospace, monospace; letter-spacing: .12em; color: #a5b4fc; }
+    video { width: 100%; aspect-ratio: 16/9; background: #05070d; border-radius: 12px; margin-top: 16px; }
+    .hidden { display: none; }
+    footer { margin-top: 20px; color: #8190ad; font-size: 12px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>GDCapture</h1>
+  <p>Lightweight Geometry Dash streaming. Create a room on the streaming Mac, then share its code with a friend.</p>
+
+  <section>
+    <h2>Stream from this Mac</h2>
+    <div class="row">
+      <button id="createRoom">Create room</button>
+      <button id="connectLocal" class="secondary" disabled>Connect local server</button>
+    </div>
+    <div id="roomInfo" class="hidden">
+      <p class="muted">Room code</p>
+      <div id="roomCode" class="room"></div>
+    </div>
+  </section>
+
+  <hr style="border-color:#293653; margin:24px 0">
+
+  <section>
+    <h2>Watch a stream</h2>
+    <div class="row">
+      <input id="joinCode" placeholder="Enter room code" maxlength="40" autocomplete="off">
+      <button id="joinRoom">Join</button>
+    </div>
+  </section>
+
+  <div id="status" class="status" role="status" aria-live="polite">Connecting to Firebase…</div>
+  <video id="video" autoplay playsinline controls class="hidden"></video>
+  <footer>GDCapture is in early development. Room coordination is enabled; live media playback will arrive in a later milestone.</footer>
+</main>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+  import {
+    getFirestore, collection, doc, getDoc, setDoc, updateDoc,
+    onSnapshot, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB3FVZoY_H3N3vCZL8Nk0N3z4HgQY-rIt8g",
+    authDomain: "gd-capture.firebaseapp.com",
+    projectId: "gd-capture",
+    storageBucket: "gd-capture.firebasestorage.app",
+    messagingSenderId: "457470329431",
+    appId: "1:457470329431:web:3ed148342b8dc803ce1912"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const $ = (id) => document.getElementById(id);
+  let currentRoomId = null;
+  let localSocket = null;
+  let stopRoomListener = null;
+
+  function status(message) { $("status").textContent = message; }
+  function makeRoomCode() {
+    return crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
+  }
+
+  try {
+    await signInAnonymously(auth);
+    status("Connected to Firebase. Create a room or enter a friend's room code.");
+  } catch (error) {
+    status("Firebase sign-in failed: " + error.message +
+      " — enable Anonymous authentication in Firebase Console.");
+    $("createRoom").disabled = true;
+    $("joinRoom").disabled = true;
+  }
+
+  $("createRoom").addEventListener("click", async () => {
+    try {
+      const uid = auth.currentUser.uid;
+      const roomId = makeRoomCode();
+      await setDoc(doc(db, "rooms", roomId), {
+        hostUid: uid,
+        viewerUid: null,
+        status: "waiting",
+        createdAt: serverTimestamp()
+      });
+      currentRoomId = roomId;
+      $("roomCode").textContent = roomId;
+      $("roomInfo").classList.remove("hidden");
+      $("connectLocal").disabled = false;
+      watchRoom(roomId);
+      status("Room created. Connect the local GDCapture server, then share the code.");
+    } catch (error) {
+      status("Could not create room: " + error.message);
+    }
+  });
+
+  $("joinRoom").addEventListener("click", async () => {
+    const roomId = $("joinCode").value.trim().toUpperCase();
+    if (!roomId) return status("Enter a room code first.");
+    try {
+      const roomRef = doc(db, "rooms", roomId);
+      const snapshot = await getDoc(roomRef);
+      if (!snapshot.exists()) return status("Room not found.");
+      const room = snapshot.data();
+      if (room.status !== "waiting" || room.viewerUid) return status("That room is no longer available.");
+      await updateDoc(roomRef, {
+        viewerUid: auth.currentUser.uid,
+        status: "paired",
+        updatedAt: serverTimestamp()
+      });
+      currentRoomId = roomId;
+      watchRoom(roomId);
+      status("Joined room. Waiting for the host to start the media connection.");
+    } catch (error) {
+      status("Could not join room: " + error.message);
+    }
+  });
+
+  $("connectLocal").addEventListener("click", () => {
+    if (localSocket && localSocket.readyState === WebSocket.OPEN) {
+      localSocket.close();
+      return;
+    }
+    status("Connecting to GDCapture Server at ws://127.0.0.1:8765 …");
+    try {
+      localSocket = new WebSocket("ws://127.0.0.1:8765");
+      localSocket.binaryType = "arraybuffer";
+      localSocket.onopen = () => {
+        $("connectLocal").textContent = "Disconnect local server";
+        status("Local server connected. Media transport is not implemented yet.");
+      };
+      localSocket.onmessage = (event) => {
+        const bytes = event.data instanceof ArrayBuffer ? event.data.byteLength : 0;
+        status("Local server connected. Received " + bytes + " bytes; playback is not implemented yet.");
+      };
+      localSocket.onerror = () => status("Could not connect to localhost. Start the GDCapture Mac server first.");
+      localSocket.onclose = () => {
+        $("connectLocal").textContent = "Connect local server";
+        status("Local server disconnected.");
+      };
+    } catch (error) {
+      status("Local connection failed: " + error.message);
+    }
+  });
+
+  function watchRoom(roomId) {
+    if (stopRoomListener) stopRoomListener();
+    stopRoomListener = onSnapshot(doc(db, "rooms", roomId), (snapshot) => {
+      if (!snapshot.exists()) return status("This room was closed.");
+      const room = snapshot.data();
+      if (room.viewerUid) status("Room " + roomId + " has a viewer connected. WebRTC negotiation is the next implementation step.");
+      else status("Room " + roomId + " is waiting for a viewer.");
+    }, (error) => status("Room listener error: " + error.message));
+  }
+
+  window.addEventListener("beforeunload", () => {
+    if (localSocket) localSocket.close();
+    if (stopRoomListener) stopRoomListener();
+  });
+</script>
+</body>
+</html>
